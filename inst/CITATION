@@ -1,0 +1,15 @@
+bibentry(
+  bibtype = "Manual",
+  title = "rgph2024tn: Tunisia 2024 General Census of Population and Housing",
+  author = person("Mohamed Dhia", "Hammami"),
+  year = "2025",
+  note = "R package version 0.1.0",
+  url = "https://github.com/MedDhia/rgph2024tn"
+)
+bibentry(
+  bibtype = "Misc",
+  title = "Recensement General de la Population et de l'Habitat 2024",
+  author = person("Institut National de la Statistique"),
+  year = "2024",
+  url = "https://ins.tn"
+)

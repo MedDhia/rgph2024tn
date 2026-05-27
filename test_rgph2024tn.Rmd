@@ -1,0 +1,289 @@
+---
+title: "rgph2024tn -- Package Validation Report"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = "#>")
+.pass <- 0L; .fail <- 0L
+check <- function(desc, expr) {
+  ok <- tryCatch({ stopifnot(isTRUE(eval(expr, parent.frame()))); TRUE }, error = function(e) FALSE)
+  if (ok) { .pass <<- .pass + 1L; cat("  PASS", desc, "\n") }
+  else    { .fail <<- .fail + 1L; cat("  FAIL", desc, "-- FAILED\n") }
+}
+```
+
+# 1. Install and load
+
+To install from the tarball, place `rgph2024tn-R-0.1.0.tar.gz` next to this
+Rmd and knit. Or install from the package directory with `devtools::install()`.
+
+```{r install}
+# Try tarball first, fall back to devtools::install()
+tarball <- "rgph2024tn-R-0.1.0.tar.gz"
+if (file.exists(tarball)) {
+  install.packages(tarball, repos = NULL, type = "source")
+} else if (requireNamespace("devtools", quietly = TRUE)) {
+  devtools::install(".", upgrade = "never", quiet = TRUE)
+} else {
+  stop("Place rgph2024tn-R-0.1.0.tar.gz here or install devtools.")
+}
+library(rgph2024tn)
+cat("Loaded: rgph2024tn", as.character(packageVersion("rgph2024tn")), "\n")
+```
+
+# 2. Metadata
+
+```{r metadata}
+d <- packageDescription("rgph2024tn")
+check("Package name", d$Package == "rgph2024tn")
+check("Version 0.1.0", d$Version == "0.1.0")
+check("License MIT", grepl("MIT", d$License))
+check("Depends R >= 4.0", grepl("4\\.0", d$Depends))
+check("Imports only utils", trimws(d$Imports) == "utils")
+check("No heavy deps in Imports", !any(grepl("dplyr|readr|tibble|arrow|rlang", d$Imports)))
+check("CITATION exists", file.exists(system.file("CITATION", package = "rgph2024tn")))
+check("At least 2 citation entries", length(citation("rgph2024tn")) >= 2)
+```
+
+# 3. Delegations (bundled)
+
+```{r delegations}
+del <- load_delegations()
+check("279 rows", nrow(del) == 279)
+check(">= 900 columns", ncol(del) >= 900)
+check("First col = code_gouvernorat", names(del)[1] == "code_gouvernorat")
+check("Has delegation_fr", "delegation_fr" %in% names(del))
+check("Has lat", "lat" %in% names(del))
+check("Has lon", "lon" %in% names(del))
+check("Has region", "region" %in% names(del))
+check("Has code_delegation", "code_delegation" %in% names(del))
+check("No NA coords", !any(is.na(del$lat)) && !any(is.na(del$lon)))
+```
+
+# 4. Gouvernorats (bundled)
+
+```{r gouvernorats}
+gov <- load_gouvernorats()
+check("24 rows", nrow(gov) == 24)
+check(">= 1000 cols", ncol(gov) >= 1000)
+check("First col clean", names(gov)[1] == "code_gouvernorat")
+check("Has gouvernorat_fr", "gouvernorat_fr" %in% names(gov))
+check("No NA coords", !any(is.na(gov$lat)) && !any(is.na(gov$lon)))
+```
+
+# 5. National (bundled)
+
+```{r national}
+nat <- load_national()
+check("1 row", nrow(nat) == 1)
+check(">= 1000 cols", ncol(nat) >= 1000)
+```
+
+# 6. Secteurs (requires download)
+
+```{r secteurs}
+check("load_secteurs() errors with helpful message",
+      tryCatch({ load_secteurs(); FALSE },
+               error = function(e) grepl("download_secteurs", e$message)))
+```
+
+# 7. Caching
+
+```{r caching}
+del2 <- load_delegations()
+check("Caching: identical object returned", identical(del, del2))
+```
+
+# 8. Accessors
+
+```{r accessors}
+tunis <- get_gouvernorat(11)
+check("get_gouvernorat(11) = 1 row", nrow(tunis) == 1)
+check("get_gouvernorat(11) = Tunis", tunis$gouvernorat_fr == "Tunis")
+
+sfax <- get_gouvernorat(name = "Sfax")
+check("get_gouvernorat(name='Sfax') = 1 row", nrow(sfax) == 1)
+
+empty <- get_gouvernorat(99)
+check("get_gouvernorat(99) = 0 rows", nrow(empty) == 0)
+
+empty2 <- get_gouvernorat(name = "NONEXISTENT_XYZZY")
+check("No match by name = 0 rows", nrow(empty2) == 0)
+
+carth <- get_delegation(1151)
+check("get_delegation(1151) = 1 row", nrow(carth) == 1)
+check("get_delegation(1151) contains Carthage",
+      grepl("Carthage", carth$delegation_fr))
+
+kass <- get_delegation(name = "Kasserine")
+check("get_delegation(name='Kasserine') >= 1 row", nrow(kass) >= 1)
+
+co <- get_region("Centre Ouest")
+check("get_region('Centre Ouest') has data", nrow(co) > 0)
+check("All rows are Centre Ouest", all(co$region == "Centre Ouest"))
+```
+
+# 9. Search and codebook
+
+```{r search}
+inds <- list_indicators("delegations")
+check("list_indicators returns character", is.character(inds))
+check("Contains 'emploi'", "emploi" %in% inds)
+check("Contains 'biens_equipement'", "biens_equipement" %in% inds)
+check("Contains 'migration_interne'", "migration_interne" %in% inds)
+
+cols <- search_indicator("delegations", "chomage")
+check("search 'chomage' finds columns", length(cols) > 0)
+check("All contain chomage", all(grepl("chomage", cols, ignore.case = TRUE)))
+
+cnam_cols <- search_indicator("delegations", "CNAM")
+check("search 'CNAM' finds columns", length(cnam_cols) > 0)
+
+cb <- codebook()
+check("codebook returns data.frame", is.data.frame(cb))
+check("codebook >= 46 rows", nrow(cb) >= 46)
+check("codebook has 4 columns", ncol(cb) == 4)
+check("Columns: indicator, domain, description, deepest_level",
+      identical(names(cb), c("indicator", "domain", "description", "deepest_level")))
+
+cb_ed <- codebook("education")
+check("codebook('education') filters", all(cb_ed$domain == "education"))
+check("At least 5 education indicators", nrow(cb_ed) >= 5)
+
+check("8 domains", length(unique(cb$domain)) == 8)
+expected_domains <- c("education", "demography", "housing", "infrastructure",
+                      "assets", "health", "disability", "employment")
+check("All domain names correct", setequal(unique(cb$domain), expected_domains))
+```
+
+# 10. Gini coefficient
+
+```{r gini}
+check("gini(ones) = 0", gini(rep(1, 100)) == 0)
+check("gini(extreme) > 0.98", gini(c(rep(0, 99), 100)) > 0.98)
+check("gini(single value) = NA", is.na(gini(5)))
+check("gini(empty) = NA", is.na(gini(numeric(0))))
+check("gini(all zeros) = NA", is.na(gini(rep(0, 10))))
+check("gini(all NA) = NA", is.na(gini(c(NA, NA, NA))))
+check("gini handles NA in data", !is.na(gini(c(1, 2, NA, 4, 5))))
+check("Gas Gini > 0.5", gini(del[["raccordement.total.Gaz naturel"]]) > 0.5)
+check("Elec Gini < 0.05", gini(del[["raccordement.total.STEG"]]) < 0.05)
+```
+
+# 11. Theil decomposition
+
+```{r theil}
+r <- theil_decompose(del[["raccordement.total.SONEDE"]], del[["region"]])
+check("Returns list", is.list(r))
+check("Has 5 components",
+      all(c("total","between","within","pct_between","group_detail") %in% names(r)))
+check("Additivity: total = between + within",
+      abs(r$total - r$between - r$within) < 0.01)
+check("pct_between in (0, 100)", r$pct_between > 0 && r$pct_between < 100)
+check("group_detail is data.frame", is.data.frame(r$group_detail))
+check("6 groups (regions)", nrow(r$group_detail) == 6)
+check("group_detail has correct columns",
+      all(c("group","n","mean","theil","weight") %in% names(r$group_detail)))
+```
+
+# 12. Geographic coordinates
+
+```{r coordinates}
+check("Del lat in [30, 38]", all(del$lat > 30 & del$lat < 38))
+check("Del lon in [7, 12]", all(del$lon > 7 & del$lon < 12))
+check("Gov lat in [30, 38]", all(gov$lat > 30 & gov$lat < 38))
+check("Gov lon in [7, 12]", all(gov$lon > 7 & gov$lon < 12))
+```
+
+# 13. Administrative hierarchy
+
+```{r hierarchy}
+gov_codes <- unique(gov$code_gouvernorat)
+del_gov_codes <- unique(del$code_gouvernorat)
+check("Del gov codes subset of gov codes", all(del_gov_codes %in% gov_codes))
+
+expected_regions <- c("Nord Est", "Nord Ouest", "Centre Est",
+                      "Centre Ouest", "Sud Est", "Sud Ouest")
+check("All 6 regions present", setequal(unique(del$region), expected_regions))
+check("No NA regions", !any(is.na(del$region)))
+```
+
+# 14. Key indicator columns exist with data
+
+```{r key-indicators}
+key_cols <- c(
+  "emploi.taux_chomage.Masculin",
+  "emploi.taux_emploi.Feminin",
+  "emploi.taux_participation.Feminin",
+  "raccordement.total.SONEDE",
+  "raccordement.total.STEG",
+  "raccordement.total.Gaz naturel",
+  "biens_equipement.total.Voiture",
+  "migration_interne.sortants",
+  "migration_interne.entrants",
+  "migration_interne.solde_migratoire",
+  "migration_externe.emigrants",
+  "affiliation_couverture_sociale.all.Total",
+  "couverture_sanitaire_type.all.CNAM.Total"
+)
+
+for (col in key_cols) {
+  check(paste0("'", col, "' has data"),
+        col %in% names(del) && sum(!is.na(del[[col]])) > 200)
+}
+```
+
+# 15. Value ranges
+
+```{r value-ranges}
+prop_cols <- c("raccordement.total.SONEDE", "raccordement.total.STEG",
+               "raccordement.total.Gaz naturel", "biens_equipement.total.Voiture",
+               "affiliation_couverture_sociale.all.Total")
+for (col in prop_cols) {
+  v <- del[[col]]; v <- v[!is.na(v)]
+  check(paste0(col, " in [0, 1]"), all(v >= 0 & v <= 1.001))
+}
+
+m <- del[["migration_interne.solde_migratoire"]]
+m <- m[!is.na(m)]
+check("Net migration has positive and negative values",
+      any(m > 0) && any(m < 0))
+```
+
+# 16. Spot checks
+
+```{r spot-checks}
+tunis_u <- gov[gov$code_gouvernorat == 11, "emploi.taux_chomage.Masculin"]
+check("Tunis male unemployment < 20%", !is.na(tunis_u) && tunis_u < 0.20)
+
+carth_lat <- del[del$code_delegation == 1151, "lat"]
+carth_lon <- del[del$code_delegation == 1151, "lon"]
+check("Carthage lat near 36.85", abs(carth_lat - 36.85) < 0.1)
+check("Carthage lon near 10.32", abs(carth_lon - 10.32) < 0.1)
+
+gas <- del[["raccordement.total.Gaz naturel"]]
+gas <- gas[!is.na(gas)]
+check(">50% delegations have <5% gas", mean(gas < 0.05) > 0.5)
+```
+
+# Summary
+
+```{r summary, echo=FALSE}
+cat("\n")
+cat("======================================\n")
+cat(sprintf("  Passed: %d\n", .pass))
+cat(sprintf("  Failed: %d\n", .fail))
+cat("======================================\n")
+if (.fail == 0) {
+  cat("\n  PASS ALL TESTS PASSED\n")
+  cat("  Ready for: R CMD build && R CMD check --as-cran\n")
+} else {
+  cat(sprintf("\n  FAIL %d TESTS FAILED\n", .fail))
+}
+```
+
+---
+
+*Generated `r Sys.time()` on `r R.version.string`*
